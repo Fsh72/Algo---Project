@@ -1,223 +1,171 @@
 import osmnx as ox
 import networkx as nx
 import heapq
+import copy
 import time
-import tracemalloc
-import random
+import psutil
+
+class ContractionHierarchies:
+    def __init__(self, graph, order_strategy="default"):
+        self.original_graph = graph  # Keep the original graph
+        self.contracted_graph = copy.deepcopy(graph)  # Copy for modifications
+        self.rank = {}  # Node ranking for contraction
+        self.shortcuts = {}  # Store shortcut edges
+        self.order = []  # Contraction order
+        self.order_strategy = order_strategy  # "default" or "degree"
+
+    def compute_node_order(self):
+        """Compute contraction order based on the selected strategy."""
+        if self.order_strategy == "default":
+            # Default heuristic: Lower degree nodes contracted first
+            self.order = sorted(self.contracted_graph.nodes(), key=lambda n: self.contracted_graph.degree(n))
+        elif self.order_strategy == "degree":
+            # Degree-based ordering: Higher degree nodes are contracted first
+            self.order = sorted(self.contracted_graph.nodes(), key=lambda n: -self.contracted_graph.degree(n))
+
+        self.rank = {node: i for i, node in enumerate(self.order)}
+
+    def contract_node(self, node):
+        """Contract a node and add necessary shortcuts."""
+        neighbors = list(self.contracted_graph.neighbors(node))
+        for i in range(len(neighbors)):
+            for j in range(i + 1, len(neighbors)):
+                u, v = neighbors[i], neighbors[j]
+                if not self.contracted_graph.has_edge(u, v):
+                    weight_u = float(self.contracted_graph[node][u].get("length", 1.0))
+                    weight_v = float(self.contracted_graph[node][v].get("length", 1.0))
+                    shortcut_weight = weight_u + weight_v
+
+                    self.contracted_graph.add_edge(u, v, length=shortcut_weight)
+                    self.shortcuts[(u, v)] = shortcut_weight
+
+    def preprocess(self):
+        """Preprocess the graph to build contraction hierarchies."""
+        self.compute_node_order()
+        for node in self.order:
+            self.contract_node(node)
+
+    def bidirectional_dijkstra(self, source, target):
+        """Bidirectional search for shortest path using CH."""
+        if source not in self.contracted_graph or target not in self.contracted_graph:
+            raise ValueError(f"One or both nodes {source}, {target} are missing in the graph.")
+
+        if source == target:
+            return 0
+
+        forward_pq = []
+        backward_pq = []
+
+        forward_dist = {node: float("inf") for node in self.contracted_graph.nodes()}
+        backward_dist = {node: float("inf") for node in self.contracted_graph.nodes()}
+
+        forward_dist[source] = 0
+        backward_dist[target] = 0
+
+        heapq.heappush(forward_pq, (0, source))
+        heapq.heappush(backward_pq, (0, target))
+
+        visited_forward = set()
+        visited_backward = set()
+
+        best_meeting_node = None
+        best_path = float("inf")
+
+        while forward_pq or backward_pq:
+            # Forward search step
+            if forward_pq:
+                forward_cost, forward_node = heapq.heappop(forward_pq)
+                if forward_node in visited_forward:
+                    continue
+                visited_forward.add(forward_node)
+
+                if forward_node in visited_backward:
+                    total_cost = forward_dist[forward_node] + backward_dist[forward_node]
+                    if total_cost < best_path:
+                        best_meeting_node = forward_node
+                        best_path = total_cost
+
+                for neighbor in self.contracted_graph.neighbors(forward_node):
+                    weight = float(self.contracted_graph[forward_node][neighbor].get("length", 1.0))
+                    new_dist = forward_dist[forward_node] + weight
+                    if new_dist < forward_dist[neighbor]:
+                        forward_dist[neighbor] = new_dist
+                        heapq.heappush(forward_pq, (new_dist, neighbor))
+
+            # Backward search step
+            if backward_pq:
+                backward_cost, backward_node = heapq.heappop(backward_pq)
+                if backward_node in visited_backward:
+                    continue
+                visited_backward.add(backward_node)
+
+                if backward_node in visited_forward:
+                    total_cost = forward_dist[backward_node] + backward_dist[backward_node]
+                    if total_cost < best_path:
+                        best_meeting_node = backward_node
+                        best_path = total_cost
+
+                for neighbor in self.contracted_graph.neighbors(backward_node):
+                    weight = float(self.contracted_graph[backward_node][neighbor].get("length", 1.0))
+                    new_dist = backward_dist[backward_node] + weight
+                    if new_dist < backward_dist[neighbor]:
+                        backward_dist[neighbor] = new_dist
+                        heapq.heappush(backward_pq, (new_dist, neighbor))
+
+        return best_path if best_path < float("inf") else None
+
+def memory_usage():
+    """Returns current memory usage in MB."""
+    process = psutil.Process()
+    return process.memory_info().rss / (1024 * 1024)  # Convert bytes to MB
 
 
-### Step 1: Compute Node Ordering - Edge Difference ###
-def compute_edge_difference_ranking(G):
-    """Computes node ranking based on Edge Difference (ED)."""
-    node_ranks = {}
-    pq = []
+# Load a real-world road network using osmnx
+city_name = "Falcon, Colorado, USA"
+print(f"Loading road network for {city_name}...")
+G = ox.graph_from_place(city_name, network_type="drive")
 
-    for node in G.nodes():
-        edges_before = len(list(G.edges(node)))
-        neighbors = list(G.neighbors(node))
-        potential_shortcuts = (len(neighbors) * (len(neighbors) - 1)) // 2
-        edge_difference = potential_shortcuts - edges_before
+# Convert to an undirected graph
+G = G.to_undirected()
 
-        heapq.heappush(pq, (edge_difference, node))
+# Ensure all edges have a "length" attribute
+for u, v, data in G.edges(data=True):
+    if "length" not in data:
+        G[u][v]["length"] = 1.0  # Assign a default value if missing
 
-    rank = 0
-    while pq:
-        _, node = heapq.heappop(pq)
-        node_ranks[node] = rank
-        rank += 1
+# Select random nodes for source and target
+nodes = list(G.nodes())
+source, target = nodes[0], nodes[-1]  # Choosing first and last nodes for testing
 
-    return node_ranks
+# Compare different node ordering strategies
+for strategy in ["default", "degree"]:
+    print(f"\nTesting Contraction Hierarchies with {strategy} node ordering...")
 
+    # Measure initial memory usage
+    initial_memory = memory_usage()
 
-### Step 2: Compute Node Ordering - Rank-by-Degree ###
-def compute_degree_ranking(G):
-    """Computes node ranking based on node degree."""
-    degree_order = sorted(G.nodes(), key=lambda node: G.degree(node))
-    return {node: rank for rank, node in enumerate(degree_order)}
+    # Run Contraction Hierarchies
+    ch = ContractionHierarchies(G, order_strategy=strategy)
 
+    # Preprocessing (this step is slow)
+    start_preprocess = time.time()
+    ch.preprocess()
+    end_preprocess = time.time()
 
-### Step 3: Contract Graph ###
-def contract_graph(G, node_order):
-    """Contracts the graph based on node ordering while preserving node attributes."""
-    G_contracted = G.copy()
-    overlay_graph = nx.Graph()
-    shortcut_count = {}
-    node_levels = {}
+    # Measure memory after preprocessing
+    preprocess_memory = memory_usage()
 
-    for node in node_order:
-        if node not in G_contracted:
-            continue
-        contract_node(G_contracted, node, overlay_graph, shortcut_count, node_levels)
+    print(f"Preprocessing Time ({strategy}): {end_preprocess - start_preprocess:.2f} seconds")
+    print(f"Memory Usage after Preprocessing ({strategy}): {preprocess_memory - initial_memory:.2f} MB")
 
-    for u, v, data in overlay_graph.edges(data=True):
-        if not G_contracted.has_edge(u, v):
-            G_contracted.add_edge(u, v, **data)
+    # Query shortest path using CH with bidirectional Dijkstra
+    start_query = time.time()
+    shortest_path_length = ch.bidirectional_dijkstra(source, target)
+    end_query = time.time()
 
-    for node in G_contracted.nodes():
-        if node in G.nodes():
-            G_contracted.nodes[node]["x"] = G.nodes[node].get("x", None)
-            G_contracted.nodes[node]["y"] = G.nodes[node].get("y", None)
-            G_contracted.nodes[node]["level"] = node_levels.get(node, 0)
+    # Measure memory after query
+    query_memory = memory_usage()
 
-    return G_contracted, len(shortcut_count)
-
-
-### Step 4: Contract Node Function ###
-def contract_node(G, node, overlay_graph, shortcut_count, node_levels, max_hops=5):
-    """Contracts a node by removing it and adding shortcut edges where necessary."""
-    if node not in G:
-        return
-
-    neighbors = list(G.neighbors(node))
-    edge_weights = {neighbor: G[node][neighbor].get("length", 1) for neighbor in neighbors}
-
-    if len(neighbors) < 2:
-        return
-
-    for i in range(len(neighbors)):
-        for j in range(i + 1, len(neighbors)):
-            u, v = neighbors[i], neighbors[j]
-
-            if overlay_graph.has_edge(u, v) or G.has_edge(u, v):
-                continue
-
-            shortcut_weight = edge_weights[u] + edge_weights[v]
-
-            witness_length = nx.single_source_dijkstra_path_length(
-                G, source=u, cutoff=max_hops, weight="length"
-            ).get(v, float("inf"))
-
-            if witness_length <= shortcut_weight:
-                continue
-
-            overlay_graph.add_edge(u, v, length=shortcut_weight)
-            shortcut_count[(u, v)] = shortcut_count.get((u, v), 0) + 1
-
-    node_levels[node] = len(G)
-    G.remove_node(node)
-
-
-### Step 5: CH-Bidirectional Dijkstra for Shortest Paths ###
-def ch_shortest_path(G, source, target):
-    """Finds the shortest path using CH-Bidirectional Dijkstra."""
-    if source not in G or target not in G:
-        return float("inf")
-
-    forward_queue = [(0, source)]
-    reverse_queue = [(0, target)]
-    forward_dist = {source: 0}
-    reverse_dist = {target: 0}
-    forward_visited = {}
-    reverse_visited = {}
-
-    best_path = float("inf")
-
-    while forward_queue or reverse_queue:
-        if forward_queue:
-            f_dist, f_node = heapq.heappop(forward_queue)
-            forward_visited[f_node] = f_dist
-            if f_node in reverse_visited:
-                best_path = min(best_path, f_dist + reverse_visited[f_node])
-
-            for neighbor in G.neighbors(f_node):
-                weight = G[f_node][neighbor].get("length", 1)
-                new_dist = f_dist + weight
-                if neighbor not in forward_dist or new_dist < forward_dist[neighbor]:
-                    forward_dist[neighbor] = new_dist
-                    heapq.heappush(forward_queue, (new_dist, neighbor))
-
-        if reverse_queue:
-            r_dist, r_node = heapq.heappop(reverse_queue)
-            reverse_visited[r_node] = r_dist
-            if r_node in forward_visited:
-                best_path = min(best_path, r_dist + forward_visited[r_node])
-
-            for neighbor in G.neighbors(r_node):
-                weight = G[r_node][neighbor].get("length", 1)
-                new_dist = r_dist + weight
-                if neighbor not in reverse_dist or new_dist < reverse_dist[neighbor]:
-                    reverse_dist[neighbor] = new_dist
-                    heapq.heappush(reverse_queue, (new_dist, neighbor))
-
-    return best_path
-
-
-### Step 6: Run Query Experiments ###
-def query_performance(G_ch):
-    """Measures CH query time with multiple random queries."""
-    nodes = list(G_ch.nodes())
-    num_queries = 50
-    total_time = 0
-
-    for _ in range(num_queries):
-        source, target = random.sample(nodes, 2)
-        start_time = time.time()
-        ch_shortest_path(G_ch, source, target)
-        total_time += time.time() - start_time
-
-    avg_time = total_time / num_queries
-    return avg_time
-
-
-### Step 7: Compare Orderings ###
-def compare_orderings(G):
-    """Compares Edge-Difference and Rank-by-Degree CH performance."""
-
-    results = {}
-
-    for method, ordering_func in {
-        "Edge Difference": compute_edge_difference_ranking,
-        "Rank by Degree": compute_degree_ranking,
-    }.items():
-        print(f"\nProcessing CH using {method} ordering...")
-
-        tracemalloc.start()
-        start_time = time.time()
-
-        node_order = ordering_func(G)
-        G_ch, num_shortcuts = contract_graph(G, node_order)
-
-        time_taken = time.time() - start_time
-        mem_usage = tracemalloc.get_traced_memory()[1] / (1024 * 1024)
-        tracemalloc.stop()
-
-        query_time = query_performance(G_ch)
-
-        results[method] = {
-            "Nodes": len(G_ch.nodes()),
-            "Edges": len(G_ch.edges()),
-            "Shortcuts": num_shortcuts,
-            "Time (s)": time_taken,
-            "Memory (MB)": mem_usage,
-            "Avg Query Time (ms)": query_time * 1000,
-        }
-
-    return results
-
-
-### Step 8: Run Experiment ###
-def run_experiment():
-    """Runs CH on a real road network and compares methods."""
-    print("Loading real-world road network...")
-    place_name = "New York, USA"
-    G = ox.graph_from_place(place_name, network_type='drive')
-    G = nx.Graph(G)
-
-    print(f"Original graph: {len(G.nodes())} nodes, {len(G.edges())} edges")
-
-    results = compare_orderings(G)
-
-    print("\nComparison Results:")
-    for method, data in results.items():
-        print(f"\n{method} Ordering:")
-        for metric, value in data.items():
-            print(f"  {metric}: {value}")
-
-    print("\nSaving contracted graph...")
-    G_ch, _ = contract_graph(G, compute_edge_difference_ranking(G))
-    ox.save_graphml(nx.MultiDiGraph(G_ch), filepath="NewYork_CH.graphml")
-    print("Graph saved as NewYork_CH.graphml")
-
-
-if __name__ == "__main__":
-    run_experiment()
+    print(f"Shortest Path ({strategy}) from {source} to {target}: {shortest_path_length} meters")
+    print(f"Query Time ({strategy}): {end_query - start_query:.4f} seconds")
+    print(f"Memory Usage after Query ({strategy}): {query_memory - preprocess_memory:.2f} MB")
