@@ -2,7 +2,7 @@ import heapq
 
 
 def bidirectional_dijkstra(graph, source, target, node_order_map):
-    """Bidirectional Dijkstra's algorithm with an improved stopping condition."""
+
 
     # Initialize priority queues and distance dictionaries
     forward_queue = [(0, source)]
