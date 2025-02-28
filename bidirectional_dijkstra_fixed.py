@@ -1,9 +1,8 @@
-
 import heapq
 
 
 def bidirectional_dijkstra(graph, source, target, node_order_map):
-    """Bidirectional Dijkstra's algorithm for contraction hierarchies."""
+    """Bidirectional Dijkstra's algorithm with an improved stopping condition."""
 
     # Initialize priority queues and distance dictionaries
     forward_queue = [(0, source)]
@@ -15,10 +14,19 @@ def bidirectional_dijkstra(graph, source, target, node_order_map):
     best_meeting_node = None
     best_path_length = float("inf")
 
-    while forward_queue or backward_queue:
-        # Forward search
-        if forward_queue:
+    while forward_queue and backward_queue:
+        # Get the minimum cost from both queues
+        forward_min = forward_queue[0][0] if forward_queue else float('inf')
+        backward_min = backward_queue[0][0] if backward_queue else float('inf')
+
+        # **Improved stopping condition**
+        if forward_min + backward_min >= best_path_length:
+            break  # Stop early if no better path can be found
+
+        # Expand the search frontier with lower priority
+        if forward_queue and (not backward_queue or forward_min < backward_min):
             forward_cost, forward_node = heapq.heappop(forward_queue)
+
             if forward_node in backward_dist:
                 total_cost = forward_cost + backward_dist[forward_node]
                 if total_cost < best_path_length:
@@ -26,15 +34,14 @@ def bidirectional_dijkstra(graph, source, target, node_order_map):
                     best_meeting_node = forward_node
 
             for neighbor, edge_data in graph[forward_node].items():
-                cost = forward_cost + edge_data["weight"]
-                if neighbor not in forward_dist or cost < forward_dist[neighbor]:
-                    forward_dist[neighbor] = cost
-                    forward_pred[neighbor] = forward_node
-                    heapq.heappush(forward_queue, (cost, neighbor))
+                new_cost = forward_cost + edge_data["weight"]
+                if neighbor not in forward_dist or new_cost < forward_dist[neighbor]:
+                    forward_dist[neighbor] = new_cost
+                    heapq.heappush(forward_queue, (new_cost, neighbor))
 
-        # Backward search
-        if backward_queue:
+        else:
             backward_cost, backward_node = heapq.heappop(backward_queue)
+
             if backward_node in forward_dist:
                 total_cost = backward_cost + forward_dist[backward_node]
                 if total_cost < best_path_length:
@@ -42,26 +49,9 @@ def bidirectional_dijkstra(graph, source, target, node_order_map):
                     best_meeting_node = backward_node
 
             for neighbor, edge_data in graph[backward_node].items():
-                cost = backward_cost + edge_data["weight"]
-                if neighbor not in backward_dist or cost < backward_dist[neighbor]:
-                    backward_dist[neighbor] = cost
-                    backward_pred[neighbor] = backward_node
-                    heapq.heappush(backward_queue, (cost, neighbor))
+                new_cost = backward_cost + edge_data["weight"]
+                if neighbor not in backward_dist or new_cost < backward_dist[neighbor]:
+                    backward_dist[neighbor] = new_cost
+                    heapq.heappush(backward_queue, (new_cost, neighbor))
 
-    # Reconstruct the shortest path
-    if best_meeting_node is None:
-        return None, float("inf")
-
-    path = []
-    node = best_meeting_node
-    while node is not None:
-        path.append(node)
-        node = forward_pred[node]
-    path.reverse()
-
-    node = backward_pred[best_meeting_node]
-    while node is not None:
-        path.append(node)
-        node = backward_pred[node]
-
-    return path, best_path_length
+    return best_meeting_node, best_path_length
