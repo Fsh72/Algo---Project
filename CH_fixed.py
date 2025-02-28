@@ -10,18 +10,7 @@ def process_node(
     shortcut_graph: nx.Graph = None,
     criterion: str = "edge_difference",
 ) -> Tuple[int, int]:
-    """Processes a node, creates shortcuts, and optionally updates the graphs.
 
-    Args:
-        graph (nx.Graph): The graph to process the node in.
-        node (str): The node to process.
-        update_graph (bool): Whether to update the shortcut graph.
-        shortcut_graph (nx.Graph): The shortcut graph to update.
-        criterion (str): The criterion to order nodes by.
-
-    Returns:
-        Tuple[int, int]: The node's rank and the number of shortcuts added.
-    """
     neighbors = list(graph.neighbors(node))
     shortcuts_added = 0
     added_shortcuts = set()  # Track added shortcuts
@@ -90,44 +79,3 @@ def find_shortest_path_custom(
 
     return path, length
 
-# Define and process the graph
-"""
-graph = nx.Graph()
-edges = [
-    ("A", "B", 4), ("B", "C", 2), ("B", "G", 1), ("C", "D", 1),
-    ("D", "E", 3), ("D", "I", 1), ("E", "J", 3), ("F", "G", 1),
-    ("G", "H", 2), ("G", "L", 1), ("I", "J", 1), ("I", "N", 3),
-    ("J", "O", 3), ("K", "L", 1), ("K", "P", 1), ("L", "M", 3),
-    ("M", "N", 3), ("N", "O", 3), ("P", "Q", 1), ("Q", "R", 3),
-    ("Q", "V", 1), ("R", "S", 3), ("S", "T", 3), ("T", "Y", 3),
-    ("U", "V", 3), ("V", "W", 2), ("W", "X", 2), ("X", "Y", 2)
-]
-
-for u, v, weight in edges:
-    graph.add_edge(u, v, weight=weight)
-
-criteria = ["edge_difference", "shortcuts_added", "edges_removed"]
-online_options = [True, False]
-
-for criterion in criteria:
-    for online in online_options:
-        print(f"Criterion: {criterion}")
-        print(f"Online calculation: {online}")
-        graph_copy = graph.copy()
-        ch_graph, node_order, shortcuts_added = create_contraction_hierarchy(
-            graph_copy, online=online, criterion=criterion
-        )
-
-       # print(f"Shortcuts added: {shortcuts_added}")
-        print("Node Order:", node_order)
-
-        source_node = "A"
-        target_node = "Y"
-        shortest_path, path_length = find_shortest_path_custom(
-            ch_graph, source_node, target_node, node_order
-        )
-
-        print("Shortest Path:", shortest_path)
-        print("Shortest Path Length:", path_length)
-
-"""
