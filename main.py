@@ -14,7 +14,7 @@ pd.set_option("display.width", 1000)  # Expand display width to prevent truncati
 tracemalloc.start()
 
 # Step 1: Download the road network of Falcon, Colorado
-city_name = "Falcon, Colorado, USA"
+city_name = "Denver, Colorado, USA"
 print(f"Downloading graph for {city_name}...")
 G = ox.graph_from_place(city_name, network_type="drive")
 
