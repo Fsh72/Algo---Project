@@ -91,6 +91,7 @@ def find_shortest_path_custom(
     return path, length
 
 # Define and process the graph
+"""
 graph = nx.Graph()
 edges = [
     ("A", "B", 4), ("B", "C", 2), ("B", "G", 1), ("C", "D", 1),
@@ -128,3 +129,5 @@ for criterion in criteria:
 
         print("Shortest Path:", shortest_path)
         print("Shortest Path Length:", path_length)
+
+"""
