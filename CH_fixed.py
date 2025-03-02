@@ -2,6 +2,9 @@
 import networkx as nx
 from typing import Tuple, List, Dict
 from Final.bidirectional_dijkstra_fixed import bidirectional_dijkstra
+import time
+
+# code From Barak ( 6 node ordering)
 
 def process_node(
     graph: nx.Graph,
@@ -41,27 +44,46 @@ def process_node(
     )
     return rank, shortcuts_added
 
+
 def create_contraction_hierarchy(
     graph: nx.Graph, online: bool = False, criterion: str = "edge_difference"
 ) -> Tuple[nx.Graph, List[str], int]:
-    """Creates a contraction hierarchy using edge difference ordering."""
-    edge_differences: Dict[str, int] = {}
-    nodes = list(graph.nodes())
-
-    for node in nodes:
-        edge_differences[node] = process_node(graph, node, criterion=criterion)[0]
-
-    node_order = sorted(edge_differences, key=edge_differences.get)
     temp_graph = graph.copy()
     shortcut_graph = graph.copy()
     shortcuts_added = 0
+    contraction_order = []
 
-    for node in node_order:
-        shortcuts_added += process_node(
-            temp_graph, node, update_graph=True, shortcut_graph=shortcut_graph, criterion=criterion
-        )[1]
+    if online:
+        # Online: Iteratively update ranks while contracting nodes
+        remaining_nodes = set(temp_graph.nodes())
+        while remaining_nodes:
+            start_time = time.time()
 
-    return nx.compose(shortcut_graph, graph), node_order, shortcuts_added
+            # Compute ranks for remaining nodes
+            node_ranks = {node: process_node(temp_graph, node, criterion=criterion)[0] for node in remaining_nodes}
+            selected_node = min(node_ranks, key=node_ranks.get)  # Choose node with the lowest rank
+            contraction_order.append(selected_node)
+
+            # Perform contraction
+            shortcuts_added += process_node(temp_graph, selected_node, update_graph=True, shortcut_graph=shortcut_graph,
+                                            criterion=criterion)[1]
+            remaining_nodes.remove(selected_node)
+
+            end_time = time.time()
+            print(f"Node {len(contraction_order)}/{len(graph.nodes())} contracted in {end_time - start_time:.4f} sec")
+    else:
+        # Offline: Compute all ranks beforehand, then contract nodes sequentially
+        precomputed_ranks = {node: process_node(graph, node, criterion=criterion)[0] for node in graph.nodes()}
+        contraction_order = sorted(precomputed_ranks, key=precomputed_ranks.get)  # Sort nodes based on rank
+
+        for idx, node in enumerate(contraction_order):
+            start_time = time.time()
+            shortcuts_added += \
+            process_node(temp_graph, node, update_graph=True, shortcut_graph=shortcut_graph, criterion=criterion)[1]
+            end_time = time.time()
+            print(f"Node {idx + 1}/{len(contraction_order)} contracted in {end_time - start_time:.4f} sec")
+
+    return nx.compose(shortcut_graph, graph), contraction_order, shortcuts_added
 
 def find_shortest_path_custom(
     graph: nx.Graph, source: str, target: str, node_order: List[str]
@@ -78,4 +100,3 @@ def find_shortest_path_custom(
         path, length = None, float('inf')
 
     return path, length
-
