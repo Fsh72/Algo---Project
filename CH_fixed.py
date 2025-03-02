@@ -4,7 +4,15 @@ from typing import Tuple, List, Dict
 from Final.bidirectional_dijkstra_fixed import bidirectional_dijkstra
 import time
 
-# code From Barak ( 6 node ordering)
+# Code from Barak (6 nodes ordering)
+
+def save_node_ordering(contraction_order, filename="CH_node_ordering.txt"):
+    """Saves the CH node ordering to a file."""
+    with open(filename, "w") as file:
+        for node in contraction_order:
+            file.write(f"{node}\n")
+    print(f"Node ordering saved to {filename}")
+
 
 def process_node(
     graph: nx.Graph,
@@ -17,6 +25,7 @@ def process_node(
     neighbors = list(graph.neighbors(node))
     shortcuts_added = 0
     added_shortcuts = set()  # Track added shortcuts
+
 
     for i in range(len(neighbors)):
         for j in range(i + 1, len(neighbors)):
@@ -70,18 +79,20 @@ def create_contraction_hierarchy(
             remaining_nodes.remove(selected_node)
 
             end_time = time.time()
-            print(f"Node {len(contraction_order)}/{len(graph.nodes())} contracted in {end_time - start_time:.4f} sec")
+            #print(f"Node {len(contraction_order)}/{len(graph.nodes())} contracted in {end_time - start_time:.4f} sec")
     else:
         # Offline: Compute all ranks beforehand, then contract nodes sequentially
         precomputed_ranks = {node: process_node(graph, node, criterion=criterion)[0] for node in graph.nodes()}
         contraction_order = sorted(precomputed_ranks, key=precomputed_ranks.get)  # Sort nodes based on rank
+
+        save_node_ordering(contraction_order, "CH_node_ordering.txt")
 
         for idx, node in enumerate(contraction_order):
             start_time = time.time()
             shortcuts_added += \
             process_node(temp_graph, node, update_graph=True, shortcut_graph=shortcut_graph, criterion=criterion)[1]
             end_time = time.time()
-            print(f"Node {idx + 1}/{len(contraction_order)} contracted in {end_time - start_time:.4f} sec")
+            #print(f"Node {idx + 1}/{len(contraction_order)} contracted in {end_time - start_time:.4f} sec")
 
     return nx.compose(shortcut_graph, graph), contraction_order, shortcuts_added
 
