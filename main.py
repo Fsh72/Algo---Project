@@ -16,7 +16,6 @@ def pick_random_node(G):
         node = random.choice(list(G.nodes))
     return node
 
-# ✅ Ensure Pandas Shows All Columns
 pd.set_option("display.max_columns", None)
 pd.set_option("display.width", 1000)
 
@@ -49,7 +48,7 @@ print(f"Randomly selected source: {source}, target: {target}")
 for u, v, data in G_undirected.edges(data=True):
     data["weight"] = data.get("travel_time", data.get("length", 1) / 50.0)
 
-# ✅ Define the 6 correct ordering criteria
+#  Define the 6 correct ordering criteria
 ordering_methods = [
     ("edge_difference", True),
     ("edge_difference", False),
@@ -59,7 +58,7 @@ ordering_methods = [
     ("edges_removed", False),
 ]
 
-# ✅ Store results for comparison
+#  Store results for comparison
 results = []
 
 for criterion, online in ordering_methods:
@@ -93,9 +92,9 @@ for criterion, online in ordering_methods:
     query_time_ch = end_query - start_query
     query_memory_ch = peak_mem_query_ch / 1024 / 1024
 
-    print(f"✅ CH Query Completed: {query_time_ch:.4f} sec, Path Length: {path_length_ch:.2f}, Memory: {query_memory_ch:.2f} MB")
+    print(f" CH Query Completed: {query_time_ch:.4f} sec, Path Length: {path_length_ch:.2f}, Memory: {query_memory_ch:.2f} MB")
 
-    # ✅ Store the results for CH Query
+    #  Store the results for CH Query
     results.append([ordering_name, preprocessing_time, preprocessing_memory, query_time_ch, path_length_ch, query_memory_ch])
 
 # **Measure Query Time and Memory Usage for Classic BiDi Dijkstra**
@@ -115,7 +114,7 @@ print(f"Query Time (s): {query_time_classic:.4f}")
 print(f"Path Length: {path_length_orig:.2f}")
 print(f"Query Memory (MB): {query_memory_classic:.2f}")
 
-# ✅ Store Classic BiDi Dijkstra results in the DataFrame
+#  Store Classic BiDi Dijkstra results in the DataFrame
 results.append(["Classic Bidirectional Dijkstra", None, None, query_time_classic, path_length_orig, query_memory_classic])
 
 # **Measure Total Memory Usage**
@@ -123,14 +122,14 @@ current_mem_total, peak_mem_total = tracemalloc.get_traced_memory()
 tracemalloc.stop()
 print(f"\n**Total Peak Memory Usage:** {peak_mem_total / 1024 / 1024:.2f} MB")
 
-# ✅ Display Results as a Table
+#  Display Results as a Table
 df_results = pd.DataFrame(results, columns=["Ordering Method", "Preprocessing Time (s)", "Preprocessing Memory (MB)",
                                             "Query Time (s)", "Path Length", "Query Memory (MB)"])
 
-# ✅ Print Full Table Without Truncation
+#  Print Full Table Without Truncation
 print("\n🔹 CH Ordering Comparison Results:")
 print(df_results)
 
-# ✅ Save Results to a CSV File
+#  Save Results to a CSV File
 df_results.to_csv("CH_results.csv", index=False)
-print("\n✅ Results saved as 'CH_results.csv'. Open it to view all columns.")
+print("\n Results saved as 'CH_results.csv'. Open it to view all columns.")
