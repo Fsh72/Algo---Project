@@ -1,13 +1,12 @@
-
+import heapq
 import networkx as nx
-from typing import Tuple, List, Dict
-from Final.bidirectional_dijkstra_fixed import bidirectional_dijkstra
-import time
+from typing import Tuple, List
+from Project.bidirectional_dijkstra_fixed import bidirectional_dijkstra
 
-# node ordering of Barak's code
+# From Barak's Code
 
 def save_node_ordering(contraction_order, suffix):
-    """Saves the CH node ordering to a file with a unique suffix."""
+    """Saves the CH node ordering to a file For TNR"""
     filename = f"CH_node_ordering_{suffix}.txt"
     with open(filename, "w") as file:
         for node in contraction_order:
@@ -55,46 +54,57 @@ def process_node(
     return rank, shortcuts_added
 
 
-def create_contraction_hierarchy(
-    graph: nx.Graph, online: bool = False, criterion: str = "edge_difference"
-) -> Tuple[nx.Graph, List[str], int]:
+def create_contraction_hierarchy(graph: nx.Graph, online: bool = False, criterion: str = "edge_difference"):
     """
-    Creates the Contraction Hierarchy (CH) for the given graph.
-    Saves the node ordering separately for each method (online/offline, criterion).
+    - Online: Recalculates node importance dynamically.
+    - Offline: Computes node order beforehand.
     """
     temp_graph = graph.copy()
     shortcut_graph = graph.copy()
     shortcuts_added = 0
     contraction_order = []
 
-    ordering_name = f"{'online' if online else 'offline'}_{criterion}"
-
     if online:
-        # Online: Iteratively update ranks while contracting nodes
+        # ✅ Online Ordering: Recalculate ranks dynamically
         remaining_nodes = set(temp_graph.nodes())
-        while remaining_nodes:
-            node_ranks = {node: process_node(temp_graph, node, criterion=criterion)[0] for node in remaining_nodes}
-            selected_node = min(node_ranks, key=node_ranks.get)
+        priority_queue = []
+
+        for node in remaining_nodes:
+            rank = process_node(temp_graph, node, criterion=criterion)[0]
+            heapq.heappush(priority_queue, (rank, node))
+
+        while priority_queue:
+            _, selected_node = heapq.heappop(priority_queue)
+            if selected_node not in remaining_nodes:
+                continue  # Skip if already contracted
+
             contraction_order.append(selected_node)
-            shortcuts_added += process_node(temp_graph, selected_node, update_graph=True, shortcut_graph=shortcut_graph, criterion=criterion)[1]
+            shortcuts_added += process_node(temp_graph, selected_node, update_graph=True, shortcut_graph=shortcut_graph,
+                                            criterion=criterion)[1]
             remaining_nodes.remove(selected_node)
+
+            # ✅ Recalculate ranks dynamically for remaining nodes
+            updated_queue = []
+            for node in remaining_nodes:
+                rank = process_node(temp_graph, node, criterion=criterion)[0]
+                heapq.heappush(updated_queue, (rank, node))
+            priority_queue = updated_queue
+
     else:
-        # Offline: Compute all ranks beforehand, then contract nodes sequentially
+        # ✅ Offline Ordering: Precompute ranks once and sort nodes
         precomputed_ranks = {node: process_node(graph, node, criterion=criterion)[0] for node in graph.nodes()}
         contraction_order = sorted(precomputed_ranks, key=precomputed_ranks.get)
 
         for node in contraction_order:
-            shortcuts_added += process_node(temp_graph, node, update_graph=True, shortcut_graph=shortcut_graph, criterion=criterion)[1]
-
-    # ✅ Save the node ordering for both online and offline methods
-    save_node_ordering(contraction_order, ordering_name)
+            shortcuts_added += \
+            process_node(temp_graph, node, update_graph=True, shortcut_graph=shortcut_graph, criterion=criterion)[1]
 
     return nx.compose(shortcut_graph, graph), contraction_order, shortcuts_added
-
 
 def find_shortest_path_custom(
     graph: nx.Graph, source: str, target: str, node_order: List[str]
 ) -> Tuple[List[str], int]:
+
     """Finds the shortest path using the contraction hierarchy."""
     if source not in graph or target not in graph:
         raise ValueError("Source or target node not in graph")
