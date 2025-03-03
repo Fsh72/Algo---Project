@@ -28,15 +28,6 @@ city_name = "Falcon, Colorado, USA"
 print(f"Downloading graph for {city_name}...")
 G = ox.graph_from_place(city_name, network_type="drive")
 
-"""
-
-# Save the graph after first download
-ox.save_graphml(G, "Falcon.graphml")
-
-# Next time, load the graph instead of downloading again
-G = ox.load_graphml("Falcon.graphml")
-"""
-
 # Step 2: Add speed limits and travel times
 G = ox.add_edge_speeds(G)
 G = ox.add_edge_travel_times(G)
@@ -50,12 +41,11 @@ G_undirected = nx.Graph(G)
 # Select random source and target nodes
 source = pick_random_node(G_undirected)
 target = pick_random_node(G_undirected)
-
 while source == target:
     target = pick_random_node(G_undirected)  # Ensure source and target are different
 print(f"Randomly selected source: {source}, target: {target}")
 
-# Step 5: Assign travel time as weight
+# Step 5: Assign travel time as weight (handling missing values)
 for u, v, data in G_undirected.edges(data=True):
     data["weight"] = data.get("travel_time", data.get("length", 1) / 50.0)
 
@@ -108,8 +98,6 @@ for criterion, online in ordering_methods:
     # ✅ Store the results for CH Query
     results.append([ordering_name, preprocessing_time, preprocessing_memory, query_time_ch, path_length_ch, query_memory_ch])
 
-
-
 # **Measure Query Time and Memory Usage for Classic BiDi Dijkstra**
 tracemalloc.reset_peak()
 start_query_classic = time.time()
@@ -143,3 +131,6 @@ df_results = pd.DataFrame(results, columns=["Ordering Method", "Preprocessing Ti
 print("\n🔹 CH Ordering Comparison Results:")
 print(df_results)
 
+# ✅ Save Results to a CSV File
+df_results.to_csv("CH_results.csv", index=False)
+print("\n✅ Results saved as 'CH_results.csv'. Open it to view all columns.")
