@@ -1,0 +1,155 @@
+import networkx as nx
+import heapq
+import math
+import osmnx as ox
+import time
+import tracemalloc
+import random
+
+class TransitNodeRouting:
+    def __init__(self, G, k):
+        """Initializes Transit Node Routing with CH-based ordering."""
+        self.G = G
+        self.k = k
+        self.transit_nodes = set()
+        self.D = {}  # Distance table between transit nodes
+        self.forward_access = {}
+        self.search_space = {}
+
+    def ch_query(self, s, t):
+        """Runs a CH query using bidirectional Dijkstra."""
+        try:
+            length, _ = nx.bidirectional_dijkstra(self.G, s, t, weight='weight')
+            return length
+        except nx.NetworkXNoPath:
+            return math.inf
+
+    def setup_transit_nodes_and_D(self):
+        """Selects transit nodes based on CH ordering and computes distances between them."""
+        ordered_nodes = sorted(self.G.nodes(data=True), key=lambda x: x[1].get('order', float('inf')))
+        self.transit_nodes = {n for n, _ in ordered_nodes[len(ordered_nodes) - self.k:]}
+        self.D = {u: {} for u in self.transit_nodes}
+        for u in self.transit_nodes:
+            for v in self.transit_nodes:
+                self.D[u][v] = 0 if u == v else self.ch_query(u, v)
+
+    def compute_access_nodes_forward(self):
+        """Finds forward access nodes and their distances."""
+        for s in self.G.nodes():
+            candidate_access = {}
+            search_space = set()
+            pq = [(0, s)]
+            distances = {s: 0}
+            while pq:
+                d, u = heapq.heappop(pq)
+                if u in search_space:
+                    continue
+                search_space.add(u)
+                if u in self.transit_nodes and u != s:
+                    if u not in candidate_access or d < candidate_access[u]:
+                        candidate_access[u] = d
+                    continue
+                for v in self.G.neighbors(u):
+                    edge_data = self.G.get_edge_data(u, v)
+                    w = edge_data.get('weight', 1) if isinstance(edge_data, dict) else 1
+                    nd = d + w
+                    if v not in distances or nd < distances[v]:
+                        distances[v] = nd
+                        heapq.heappush(pq, (nd, v))
+            self.forward_access[s] = [(target, dist) for target, dist in candidate_access.items()]
+            self.search_space[s] = search_space
+
+    def is_local(self, s, t):
+        """Checks if a query should be handled locally using bidirectional Dijkstra."""
+        space_s = self.search_space.get(s, set())
+        space_t = self.search_space.get(t, set())
+        return bool(space_s.intersection(space_t))
+
+    def query(self, s, t):
+        """Finds shortest path between two nodes using CH-TNR approach."""
+        if s == t:
+            return 0
+        if self.is_local(s, t):
+            return self.ch_query(s, t)
+        best_distance = math.inf
+        for transit_s, d_s in self.forward_access.get(s, []):
+            for transit_t, d_t in self.forward_access.get(t, []):
+                transit_distance = self.D.get(transit_s, {}).get(transit_t, math.inf)
+                total = d_s + transit_distance + d_t
+                if total < best_distance:
+                    best_distance = total
+        return best_distance if best_distance < math.inf else self.ch_query(s, t)
+
+if __name__ == "__main__":
+    tracemalloc.start()
+    start_preprocess_time = time.time()
+
+    # Step 1: Load Graph for Falcon, Colorado
+    G = ox.graph_from_place("Falcon, Colorado, USA", network_type="drive")
+    G = ox.add_edge_speeds(G)
+    G = ox.add_edge_travel_times(G)
+    G = ox.project_graph(G)
+
+    # Step 2: Convert MultiDiGraph to Undirected Graph
+    G_undirected = nx.Graph(G)
+    for u, v, data in G_undirected.edges(data=True):
+        data["weight"] = data.get("travel_time", data.get("length", 1) / 50.0)
+
+    # Step 3: Preprocess TNR
+    tnr = TransitNodeRouting(G_undirected, k=5)
+    tnr.setup_transit_nodes_and_D()
+    tnr.compute_access_nodes_forward()
+
+    end_preprocess_time = time.time()
+    preprocess_memory = tracemalloc.get_traced_memory()[1] / 1024  # KB
+    tracemalloc.stop()
+
+    print("\n✅ Preprocessing Complete")
+    print(f"Preprocessing Time: {end_preprocess_time - start_preprocess_time:.4f} sec")
+    print(f"Preprocessing Memory Usage: {preprocess_memory:.2f} KB")
+
+    # Step 4: Pick Random Source and Target
+    def pick_random_node(G):
+        node = random.choice(list(G.nodes))
+        while G.degree(node) == 0:
+            node = random.choice(list(G.nodes))
+        return node
+
+    source = ox.distance.nearest_nodes(G, X=G.nodes[list(G.nodes)[0]]['x'], Y=G.nodes[list(G.nodes)[0]]['y'])
+    target = ox.distance.nearest_nodes(G, X=G.nodes[list(G.nodes)[-1]]['x'], Y=G.nodes[list(G.nodes)[-1]]['y'])
+
+    #source = pick_random_node(G_undirected)
+    #target = pick_random_node(G_undirected)
+    while source == target:
+        target = pick_random_node(G_undirected)
+
+    print(f"\n🔹 Randomly selected source: {source}, target: {target}")
+
+    # Step 5: Measure Query Execution Time
+    start_query_time = time.time()
+    shortest_path_distance = tnr.query(source, target)
+    end_query_time = time.time()
+
+    # Step 6: Measure Query Memory AFTER Execution (Less Overhead)
+    tracemalloc.start()  # Start memory tracking
+    start_memory_before = tracemalloc.get_traced_memory()[1]  # Memory before execution
+    start_query_time = time.time()
+    shortest_path_distance = tnr.query(source, target)
+    end_query_time = time.time()
+    end_memory_after = tracemalloc.get_traced_memory()[1]  # Memory after execution
+    query_memory_peak = tracemalloc.get_traced_memory()[1] / 1024  # Peak memory in KB
+    tracemalloc.stop()
+
+    # Compute actual memory used by query
+    query_memory_used = (end_memory_after - start_memory_before) / 1024  # KB
+
+    print("\n✅ TNR based CH-Ordering Complete!")
+    print(f"Shortest path from {source} to {target}: {shortest_path_distance}")
+    print(f"Query Time: {end_query_time - start_query_time:.6f} sec")
+    print(f"Query Memory Usage (Used): {query_memory_used:.2f} KB")
+    print(f"Query Memory Usage (Peak): {query_memory_peak:.2f} KB")
+    # Step 7: Compare with Classic Bidirectional Dijkstra
+    tnr_distance, _ = nx.bidirectional_dijkstra(G_undirected, source, target, weight='weight')
+    print(f"\n🔹 Classic BiDi Dijkstra Distance: {tnr_distance}")
+
+
