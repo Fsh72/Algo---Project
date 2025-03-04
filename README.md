@@ -39,7 +39,7 @@ The project compares **CH-based Bidirectional Dijkstra** across different datase
 ---
 
 ## ** Running the Experiments**
-### **1 Falcon, Colorado**
+### **Falcon, Colorado**
 To run CH and Classic BiDi Dijkstra on **Falcon, Colorado**, execute:
 ```bash
 python main.py
@@ -48,16 +48,6 @@ python main.py
   - Downloads the road network of Falcon.
   - Prepares the graph for CH and Classic BiDi Dijkstra.
   - Runs shortest path queries and measures performance.
-
-### **2 Denver, Colorado**
-To test CH on a **larger road network (Denver, Colorado)**, run:
-```bash
-python Denver.py
-```
-- This script:
-  - Downloads Denver's road network (larger graph).
-  - Constructs the CH and runs shortest path queries.
-  - Compares CH-based and Classic Bidirectional Dijkstra.
 
 ---
 **Observations:**
