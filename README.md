@@ -1,6 +1,6 @@
 # **Bidirectional Dijkstra-Based Contraction Hierarchy (CH)**
 This repository contains an implementation of **Bidirectional Dijkstra with Contraction Hierarchy (CH)** to optimize shortest path queries on real-world road networks. 
-The project compares **CH-based Bidirectional Dijkstra** across different datasets, including **Falcon, Colorado** and **Denver, Colorado** for different node ordering.
+The project compares **CH-based Bidirectional Dijkstra** across different datasets, including **Falcon, Colorado** for different node ordering.
 
 ## **📌 Features**
 - **Graph Construction**: Uses OpenStreetMap data to build road networks.
